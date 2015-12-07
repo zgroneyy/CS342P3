@@ -1,0 +1,184 @@
+/*
+Thread-safe hash table data structure implementation. SynchControl is a basic struct that keeps a MUTEX variable for each bucket in the implementation. Whenever a member function tries to do some operations on a particular bucket (read/write), it will be used to lock/unlock operations. For the sake of efficiency, buckets will be considered as if they are independent structures, which means that operations on different buckets can be done concurrently.
+
+Writer: 	Özgür Öney
+ID:		21101821
+Class:	CS342/2
+Project:	#3/B
+*/
+
+#include <stdlib.h>
+#include <stdio.h>
+#include "hash.h"
+#include <pthread.h>
+/*
+A struct that is defined to solve Synchronization problem among member functions.
+bucketMutex is defined to synchronize member functions, by preventing concurrent operations on same bucket.
+Every single bucket on the has table has its "own" SynchControl module, which indicates that its possible to work on different buckets 
+concurrently. 
+*/
+typedef struct SynchControl
+{
+	pthread_mutex_t bucketMutex;
+}SynchControl;
+typedef struct LinkedList
+{
+	int number;
+	struct LinkedList *next;
+}LinkedList;
+int bucketnumber;
+LinkedList* arr[MAXBUCKETS]={NULL}; //Initialize NULL all elements of array
+SynchControl syncharr[MAXBUCKETS]; //Initialize SynchControl for evey single bucket.
+
+//Basic hash function that returns result of k%N
+static int hash(int k)
+{
+	return k%bucketnumber;
+}
+//Initialize everything.
+void hash_init(int N)
+{
+	bucketnumber=N; //Initialize global variable bucketnumber to number taken from user, to that it'd be reachable from anywhere.
+	int i;
+	//Initialize bucketMutex for all buckets so that it'll be available to use later on. 
+	for(i=0; i<N;i++)
+	{
+		pthread_mutex_init(&syncharr[i].bucketMutex,NULL);
+	}
+}
+//Insert operation on a bucket.
+int hash_insert(int k)
+{
+	//Find the value to calculate insertion column.
+	int h=hash(k);
+	//Lock the mutex of this colum so that process on it will be undivisable.
+	pthread_mutex_lock(&syncharr[h].bucketMutex);
+	
+	LinkedList* temp;
+	temp=arr[h];
+	//If our linked list on that column is empty
+	if(temp==NULL)
+	{
+		//Create a new node structure to keep value.
+		LinkedList* node = malloc(sizeof(LinkedList));
+		//Initialize number of node as given number
+		node->number=k;
+		//Make our head created node.
+		arr[h]=node;
+		//Next will be null since its one & only element in the list.
+		node->next=NULL;
+		//We are done with inserting, just unlock mutex so that any other threads working on same bucket will be available to do so.
+		pthread_mutex_unlock(&syncharr[h].bucketMutex);
+		return 0;
+	}
+	//If we have the number on the list.
+	if(temp->number==k)
+	{
+		//YOu dont need to do some insertion operation, just unlock
+		pthread_mutex_unlock(&syncharr[h].bucketMutex);
+		//and return with wanted number.
+		return -1;
+	}
+	//Scan through the list, you still did not know where to insert.
+	while(temp->next!=NULL)
+	{
+		//If you can find the element through scanning
+		if(temp->next->number==k)
+		{
+			//you are done with inserting, just unlock so that other operations can do their work 
+			pthread_mutex_unlock(&syncharr[h].bucketMutex);
+			//and leave, of course
+			return -1;
+		}
+		//Otherwise, if you cannot find your element on the list; go till the end.
+		temp=temp->next;
+	}
+	//You are at the and and your element is not on the list. So Insert at the end of the list.
+	LinkedList* node = malloc(sizeof(LinkedList));
+	node->number=k;
+	temp->next=node;
+	node->next=NULL;
+	//You are done, unlock.
+	pthread_mutex_unlock(&syncharr[h].bucketMutex);
+	return (0);
+}
+//A member function to delete given item from the list.
+int hash_delete(int k)
+{
+	//Find the value to calculate deletion column.
+	int h=hash(k);
+	//Now, lock. So, other threads that will work on same column will be unavailable to work on this column.
+	pthread_mutex_lock(&syncharr[h].bucketMutex);
+	
+	LinkedList* temp;
+	temp=arr[h];
+	//If the list is empty, means you'll be deleting nothing.
+	if(temp==NULL)
+	{	
+		//Just unlock so that other threads can do their work.
+		pthread_mutex_unlock(&syncharr[h].bucketMutex);
+		//And leave.
+		return -1;
+	}
+	//If element to be deleted is the first element on the list.
+	if(temp->number==k)
+	{
+		//Do deletion stuff.
+		LinkedList* gecici;
+		gecici=arr[h];
+		arr[h]=arr[h]->next;
+		//Deallocate the memory
+		free(gecici);
+		//Just unlock so that other threads can do their work.
+		pthread_mutex_unlock(&syncharr[h].bucketMutex);
+		return 0;
+	}
+	//Scan through the list, you still did not know the place of the item to be deleted.
+	while(temp->next!=NULL)
+	{
+		//If you meet item at your path
+		if(temp->next->number==k)
+		{
+			//Delete it.
+			LinkedList* gecici;
+			gecici=temp->next;
+			temp->next=gecici->next;
+			//Deallocate it's memory
+			free(gecici);
+			//Just unlock so that other threads can do their work.
+			pthread_mutex_unlock(&syncharr[h].bucketMutex);
+			return 0;
+		}
+		//else, keep scanning till the end of the list.
+		temp=temp->next;
+	}
+	//Unlock the mutex.
+	pthread_mutex_unlock(&syncharr[h].bucketMutex);
+	return (-1);
+}
+
+int hash_get(int k)
+{
+	//Find the value to return success or fail.
+	int h=hash(k);
+	//Lock the mutex
+	pthread_mutex_lock(&syncharr[h].bucketMutex);
+	
+	LinkedList* temp;
+	temp=arr[h];
+     //Search for the item through the list.
+     int found = -1;
+     while(temp!=NULL)
+	{
+		//If you can find it, return it.
+		if(temp->number==k)
+		{
+			found = k;
+			break;
+		}
+		temp=temp->next;
+	}
+	pthread_mutex_unlock(&syncharr[h].bucketMutex);
+	//Means that you still could not find it, so return -1.
+	return found;
+}

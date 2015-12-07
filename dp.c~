@@ -1,0 +1,79 @@
+/*
+Basic philosopher's problem solution
+Each philosopher has 3 different states, represented in enum : Thinking, hungry and eating.
+A state array is declared for each philosopher, which shows currently what the philosopher is doing.
+Writer: 	Özgür Öney
+ID:		21101821
+Class:	CS342/2
+Project:	#3
+*/
+#include "dp.h"
+#include <pthread.h>
+#include <stdio.h>
+#include <errno.h>
+//Macros defined for detecting left & right philosopher; for the sake of ease.
+#define LEFT_PHILOSOPHER(i) (i + 1) % philosopherCount
+#define RIGHT_PHILOSOPHER(i) (i +philosopherCount - 1 ) % philosopherCount
+
+//Enumaration of states
+typedef enum {THINKING, HUNGRY, EATING} state;
+
+//State array for all philosophers 
+state situation[MAXTH];
+//Mutex to lock/unlock forks
+pthread_mutex_t mutex=PTHREAD_MUTEX_INITIALIZER;
+//Condition variables for philosophers
+pthread_cond_t condition[MAXTH];
+//Number of philosophers, to be used in initialization.
+int philosopherCount;
+//test method that does check. 
+void test(int i)
+{
+	/*
+	Look at the philosopher on the left and right, of course. And adds philosopher's own to validate whether
+	some other philosopher can call this philosopher or not. 
+	*/
+	if(situation[LEFT_PHILOSOPHER(i)]!=EATING && situation[RIGHT_PHILOSOPHER(i)]!=EATING && situation[i]==HUNGRY)
+	{
+		situation[i]=EATING;
+		pthread_cond_signal(&condition[i]);
+	}
+}
+//Initialization of state of all philosophers(THINKING at the very beginning) as well as condition variables.
+void dp_init(int N)
+{
+	if(N<5 || N>20)
+	{
+		perror("You have entered out-of-limit number."); 
+	     return;
+	}
+	philosopherCount=N;
+	int i=0;
+	for(i=0;i<N;i++)
+	{
+		situation[i]=THINKING;
+		pthread_cond_init(&condition[i], NULL);
+	}
+	
+}
+//An atomic method that philosopher's use whenever they are hungry.
+void dp_get_forks(int i)
+{
+	pthread_mutex_lock(&mutex);//lock mutex
+	situation[i]=HUNGRY;//change situation, you should be hungry if you are intended to get forks.
+	test(i);//test for your neighbours and your situation.
+	if(situation[i]!=EATING)//if you are not eating
+	{
+		pthread_cond_wait(&condition[i], &mutex);//you should wait
+	}
+	pthread_mutex_unlock(&mutex);//unlock, you are done with your job.
+}
+
+void dp_put_forks(int i)
+{
+	pthread_mutex_lock(&mutex);//lock mutex
+	situation[i]=THINKING;//change philosopher's state to thinking, he is done with eating
+	test(LEFT_PHILOSOPHER(i));//Test your left
+	test(RIGHT_PHILOSOPHER(i));//test your right.
+	pthread_mutex_unlock(&mutex);//unlock mutex
+}
